@@ -12,3 +12,13 @@ maintain.log
 
 # Working artefacts from the agent that built this, not part of the project.
 docs/superpowers/
+
+# Local secrets. This repo is public: a key committed here is leaked permanently
+# — git history keeps it, forks copy it, and crawlers watch new pushes. Never
+# remove these lines.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
