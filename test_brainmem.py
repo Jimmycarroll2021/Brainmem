@@ -207,6 +207,56 @@ def test_cross_process_ranking_matches_in_process():
         assert str(in_proc) == out, f"in-process {in_proc} != cross-process {out}"
 
 
+def test_caller_supplied_verdict_overrides_the_heuristic():
+    """In Claude Code the LLM is already in the room. brainmem should borrow it
+    rather than buy a second one via an API key: the agent has the memory block in
+    context and can judge a contradiction the cosine-and-entity heuristic cannot.
+    """
+    m = Memory()
+    m.encode("Deploys are approved by the platform lead.", ts=T0)
+    m.consolidate(now=T0 + DAY)
+    fid = m.db.execute("SELECT id FROM facts LIMIT 1").fetchone()["id"]
+
+    # The heuristic sees no state-change cue here and would not call it a
+    # contradiction; a model reading both sentences plainly would.
+    heuristic, _ = m._gate(
+        "Deploy approval moved to the security team.",
+        [(f"f{fid}", "Deploys are approved by the platform lead.")],
+    )
+    assert heuristic != "contradiction", "pick an example the heuristic actually misses"
+
+    r = m.encode(
+        "Deploy approval moved to the security team.",
+        verdict="contradiction",
+        target=f"f{fid}",
+        ts=T0 + 2 * DAY,
+    )
+    assert r["verdict"] == "contradiction", r
+    closed = m.db.execute("SELECT valid_to FROM facts WHERE id = ?", (fid,)).fetchone()[0]
+    assert closed is not None, "the superseded belief must be closed off"
+
+
+def test_absent_verdict_still_uses_the_gate():
+    """The default path is unchanged: no verdict supplied means brainmem decides."""
+    m = Memory()
+    m.encode("Priya Raman leads the Education engagement.", ts=T0)
+    r = m.encode("Priya Raman leads the Education engagement.", ts=T0 + 60)
+    assert r["verdict"] == "redundant"
+    assert r["episode_id"] is None
+
+
+def test_bogus_verdict_is_rejected():
+    """A caller-supplied verdict is trusted, so it has to be a real one. Silently
+    falling back would make a typo look like a successful contradiction."""
+    m = Memory()
+    try:
+        m.encode("Something happened.", verdict="contradictory", ts=T0)
+    except ValueError as e:
+        assert "contradictory" in str(e)
+    else:
+        raise AssertionError("an unknown verdict must raise, not fall back")
+
+
 def test_empty_observation_is_not_stored():
     """An empty observation is not a memory. Stored, it takes an episode row and
     later renders as a blank bullet inside a budget that had to drop something

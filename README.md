@@ -125,6 +125,25 @@ to merge it. Don't hand-edit those paths: Claude Code expands variables in
 silently dead — and a Git Bash `/c/Users/...` path fails the same way on Windows.
 Append to any `SessionStart` array you already have rather than replacing it.
 
+## No API key, ever
+
+brainmem runs entirely offline. numpy, SQLite, and nothing else — no service, no
+account, no key.
+
+The one place it wants a language model is judging how a new observation relates to
+what is already known. Inside Claude Code that model is **already there**: the agent
+has the memory block in its context and is reading both statements. So it supplies
+the verdict itself rather than brainmem paying for a second model to re-read them:
+
+| | who judges | cost |
+|---|---|---|
+| default | offline heuristic (entity overlap + negation cues) | none |
+| **Claude Code** | **the agent, via `memory_write(verdict=…)`** | **none** |
+| headless / cron | `BRAINMEM_LLM=anthropic` | one API call per write |
+
+The heuristic is deliberately weak and visibly so. It exists so the library runs with
+zero setup, not because it is good.
+
 ## How it decides what to keep
 
 The highest-leverage decision is what *not* to store.
@@ -232,9 +251,21 @@ provenance of every belief, and wire into Claude Code with one command.
    n-grams with no semantic generalisation, so "the batch aborted" and "the job
    failed" share no vector mass. Switching changes the vector dimension — start a
    fresh store.
-2. **`BRAINMEM_LLM=anthropic`** for the write gate and extractor. The heuristic judge
-   cannot reliably detect contradiction, and a cosine threshold structurally can't:
-   "X leads the project" and "X has left the project" embed almost identically.
+2. **Let the agent be the judge — no API key needed.** The offline heuristic cannot
+   reliably detect contradiction, and a cosine threshold structurally can't: "X leads
+   the project" and "X has left the project" embed almost identically. But inside
+   Claude Code there is already a frontier model in the room, holding the memory
+   block in its context. So `memory_write` takes the agent's own verdict:
+
+   ```
+   memory_write(content="Deploy approval moved to the security team.",
+                verdict="contradiction", target="f12")
+   ```
+
+   That retires the old belief and links this one as its successor. The heuristic
+   would have missed it — there is no state-change cue like "left" or "cancelled"
+   in the sentence. `BRAINMEM_LLM=anthropic` exists for headless use where no agent
+   is present; it costs an API call per write and is not the recommended path.
 3. **pgvector or FAISS** past roughly 20k live facts. `_nearest_facts` is an O(n)
    brute-force scan and only it changes. Measured on a laptop with `python bench.py`:
    ~32ms per retrieve at 10k facts, ~219ms at 50k, ~442ms at 100k. `context()` runs

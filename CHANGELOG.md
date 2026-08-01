@@ -3,6 +3,22 @@
 Notable changes. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning is [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] — 2026-08-01
+
+### Added
+
+- **The agent can judge, so no API key is needed.** `encode()`, `memory_write` and
+  `brainmem encode` now accept `verdict` and `target`. Inside Claude Code there is
+  already a frontier model holding the memory block in its context; it supplies the
+  verdict itself rather than brainmem paying for a second model to re-read the same
+  two sentences. This closes the gap the offline heuristic structurally cannot:
+  "Deploy approval moved to the security team" carries no state-change cue, so the
+  entity-and-negation gate scores it `novel` against "Deploys are approved by the
+  platform lead" — the agent scores it `contradiction` and the stale belief retires.
+  A `contradiction` without a `target` is refused rather than silently downgraded.
+- `BRAINMEM_LLM=anthropic` is demoted to what it is: the headless option for when no
+  agent is present. It is no longer the recommended path.
+
 ## [0.1.1] — 2026-08-01
 
 ### Security
@@ -59,5 +75,6 @@ and point-in-time recall, failure-valence memory that leads the assembled contex
 an outcome channel that is the only thing moving confidence, a SessionStart hook and
 an MCP server.
 
+[0.2.0]: https://github.com/Jimmycarroll2021/Brainmem/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/Jimmycarroll2021/Brainmem/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Jimmycarroll2021/Brainmem/releases/tag/v0.1.0

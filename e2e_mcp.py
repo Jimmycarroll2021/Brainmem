@@ -133,6 +133,39 @@ async def main() -> int:
         )
         check("Already known" in r, "duplicate gated through the protocol", r[:80])
 
+        # -- the agent can supply a verdict the offline heuristic misses --
+        # This is the Claude Code path: the agent is already a frontier model with
+        # the memory block in context, so it judges contradictions the entity-and-
+        # negation heuristic structurally cannot. No API key, no second model.
+        await s.call_tool(
+            "memory_write", {"content": "Deploys are approved by the platform lead."}
+        )
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable, str(HERE / "brainmem_cli.py"), "consolidate",
+            env=env, stdout=asyncio.subprocess.PIPE,
+        )
+        await proc.communicate()
+        r = text_of(await s.call_tool("memory_search", {"query": "deploy approval"}))
+        dep_id = int(r.split("[")[-1].split("]")[0])
+        r = text_of(
+            await s.call_tool(
+                "memory_write",
+                {
+                    "content": "Deploy approval moved to the security team.",
+                    "verdict": "contradiction",
+                    "target": f"f{dep_id}",
+                },
+            )
+        )
+        check("contradiction" in r.lower(), "agent-supplied contradiction accepted", r[:90])
+        r = text_of(
+            await s.call_tool(
+                "memory_write",
+                {"content": "Something changed.", "verdict": "contradiction"},
+            )
+        )
+        check("Refused" in r, "contradiction without a target is refused", r[:90])
+
         # -- outcome conflict must NOT be gated ------------------------
         r = text_of(
             await s.call_tool(

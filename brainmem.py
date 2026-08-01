@@ -55,6 +55,10 @@ DAY = 86400.0
 # losing all of it is worse than losing the tail.
 MAX_CONTENT = 4000
 
+# The four ways a new observation can relate to what is already known. A caller may
+# supply one directly instead of letting the offline gate guess.
+_VERDICTS = frozenset({"novel", "redundant", "refinement", "contradiction"})
+
 # --------------------------------------------------------------------------------
 # Pluggable model interfaces
 # --------------------------------------------------------------------------------
@@ -586,6 +590,8 @@ class Memory:
         importance: float = 0.5,
         outcome: bool | None = None,
         ts: float | None = None,
+        verdict: str | None = None,
+        target: str | None = None,
     ) -> dict[str, Any]:
         """Surprisal-gated write.
 
@@ -621,8 +627,17 @@ class Memory:
         # Gate against distilled facts AND recent raw episodes. Facts only exist
         # after a consolidation pass, so a facts-only gate is blind for the whole
         # of the first session — exactly when duplicate chatter arrives.
-        candidates = self._gate_candidates(v)
-        verdict, target = self._gate(content, candidates)
+        # A caller who already knows the answer can say so. In Claude Code the
+        # agent is itself a frontier model with the memory block in context, so it
+        # can judge a contradiction the offline heuristic structurally cannot —
+        # "X leads the project" and "X has left the project" embed almost
+        # identically, and no cosine threshold separates them. Borrowing the model
+        # that is already in the room beats requiring an API key for a second one.
+        if verdict is None:
+            candidates = self._gate_candidates(v)
+            verdict, target = self._gate(content, candidates)
+        elif verdict not in _VERDICTS:
+            raise ValueError(f"unknown verdict {verdict!r}; choose one of {sorted(_VERDICTS)}")
 
         if verdict == "redundant" and not self._outcome_conflict(target, outcome):
             # Strengthen instead of storing, but strengthen SUPPORT only — never

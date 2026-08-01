@@ -93,6 +93,8 @@ into your ~/.claude/settings.json (or .claude/settings.json for one project).
 Note: do NOT hand-edit those paths to use \$HOME or ~ — Claude Code does not
 expand variables in settings.json, and the hook will silently stop firing.
 
-Optional, strongly recommended for real use:
-    export BRAINMEM_LLM=anthropic   # real write-gate judge, needs ANTHROPIC_API_KEY
+No API key is needed. The agent judges contradictions itself via
+memory_write(verdict=..., target=...) — see the README.
+
+    export BRAINMEM_LLM=anthropic   # only for headless use with no agent present
 EOF

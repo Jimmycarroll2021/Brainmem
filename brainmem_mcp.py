@@ -88,12 +88,31 @@ def memory_write(
     actor: str = "agent",
     outcome: Literal["ok", "fail", "unknown"] = "unknown",
     session: str = "",
+    verdict: Literal["auto", "novel", "redundant", "refinement", "contradiction"] = "auto",
+    target: str = "",
 ) -> str:
     """Record an observation. It may be gated out as redundant — that is correct.
 
     outcome: "ok" if acting on this worked, "fail" if it did not, "unknown"
     otherwise. Supply it whenever you can: failures are the single most valuable
     thing this store holds, and nothing else can infer them for you.
+
+    verdict: leave as "auto" and a cheap offline heuristic decides. Set it yourself
+    when you can see the answer and the heuristic cannot — you are a language model
+    reading both statements, it is entity overlap and a negation word list.
+
+    Set verdict="contradiction" with target="f12" when this observation means a
+    belief you were shown is no longer true: a role moved to someone else, a
+    threshold changed, a decision was reversed. The heuristic misses these unless
+    the new text contains an explicit state-change cue ("left", "cancelled"), so
+    "Deploy approval moved to the security team" does NOT register against
+    "Deploys are approved by the platform lead" — but it plainly should.
+    Contradiction closes the old belief off and links this one as its successor;
+    nothing is deleted, and point-in-time queries still return the old answer.
+
+    Get the target id from the memory block you were given at session start, or
+    from memory_search. Leave verdict="auto" if you are unsure — a wrong
+    contradiction retires a true belief.
     """
     # Literal, not str: an unrecognised value used to fall through to None and be
     # recorded as unknown. A natural near-miss like "failure" therefore discarded
@@ -102,7 +121,19 @@ def memory_write(
     # the most valuable signal in the store is worse than a loud rejection, so the
     # allowed values are enumerated in the tool schema and enforced at the boundary.
     flag = {"ok": True, "fail": False}.get(outcome)
-    r = _mem().encode(content, actor=actor, session=session or None, outcome=flag)
+    if verdict == "contradiction" and not target:
+        return (
+            "Refused: verdict='contradiction' needs target='f<id>' — "
+            "which belief does it contradict?"
+        )
+    r = _mem().encode(
+        content,
+        actor=actor,
+        session=session or None,
+        outcome=flag,
+        verdict=None if verdict == "auto" else verdict,
+        target=target or None,
+    )
     # Report what actually happened, not what the gate said. A "redundant"
     # verdict can still be stored when the outcome conflicts with the thing it
     # resembles, and telling the agent otherwise would be a lie it acts on.

@@ -58,6 +58,13 @@ def main() -> int:
     e.add_argument("--actor", default=None)
     e.add_argument("--session", default=None)
     e.add_argument("--outcome", choices=["ok", "fail"], default=None)
+    e.add_argument(
+        "--verdict",
+        choices=["novel", "redundant", "refinement", "contradiction"],
+        default=None,
+        help="judge it yourself instead of letting the offline gate guess",
+    )
+    e.add_argument("--target", default=None, help="belief this refers to, e.g. f12")
 
     r = sub.add_parser("retrieve", help="query the semantic store")
     r.add_argument("query")
@@ -85,7 +92,18 @@ def main() -> int:
         print(m.context(a.goal, token_budget=a.budget, session=a.session))
     elif a.cmd == "encode":
         outcome = {"ok": True, "fail": False}.get(a.outcome)
-        print(json.dumps(m.encode(a.content, actor=a.actor, session=a.session, outcome=outcome)))
+        print(
+            json.dumps(
+                m.encode(
+                    a.content,
+                    actor=a.actor,
+                    session=a.session,
+                    outcome=outcome,
+                    verdict=a.verdict,
+                    target=a.target,
+                )
+            )
+        )
     elif a.cmd == "retrieve":
         for f in m.retrieve(a.query, k=a.k, valence=a.valence):
             print(f"[{f.id}] {f.proposition}  (conf {f.confidence:.2f}, utility {f.utility:.2f})")
