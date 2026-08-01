@@ -113,6 +113,17 @@ async def main() -> int:
             r[:80],
         )
 
+        # -- an empty write must not report itself as a successful dedup --
+        # encode() returns episode_id=None for both "already known" and "empty";
+        # collapsing them would tell the agent something was recorded when nothing
+        # was, which is the same lie as misreporting an outcome conflict.
+        r = text_of(await s.call_tool("memory_write", {"content": "   \n  "}))
+        check(
+            "empty" in r.lower() and "already known" not in r.lower(),
+            "empty write reported as empty, not as already known",
+            r[:80],
+        )
+
         # -- duplicate must be gated -----------------------------------
         r = text_of(
             await s.call_tool(

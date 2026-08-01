@@ -18,6 +18,7 @@ import numpy as np
 
 from brainmem import (
     DAY,
+    MAX_CONTENT,
     AnthropicLLM,
     Fact,
     HashEmbedder,
@@ -204,6 +205,44 @@ def test_cross_process_ranking_matches_in_process():
             [sys.executable, "-c", code, db], capture_output=True, text=True, cwd=HERE, check=False
         ).stdout.strip()
         assert str(in_proc) == out, f"in-process {in_proc} != cross-process {out}"
+
+
+def test_empty_observation_is_not_stored():
+    """An empty observation is not a memory. Stored, it takes an episode row and
+    later renders as a blank bullet inside a budget that had to drop something
+    real to make room for it."""
+    m = Memory()
+    for junk in ["", "   ", "\n\t\n", "   \r\n  "]:
+        r = m.encode(junk)
+        assert r["episode_id"] is None, f"stored empty content {junk!r}"
+        assert r["verdict"] == "empty", r
+    assert m.stats()["episodes"] == 0
+
+
+def test_oversized_observation_is_truncated_not_dropped():
+    """memory_write is reachable by an agent summarising untrusted input, so the
+    size of one observation must not be unbounded. Truncate rather than reject:
+    the head of an observation carries the point, and losing all of it is worse
+    than losing the tail."""
+    m = Memory()
+    huge = "The nightly batch failed because the upstream feed was empty. " * 5000
+    r = m.encode(huge, ts=T0)
+    assert r["episode_id"] is not None, "an oversized observation must still be recorded"
+    stored = m.db.execute(
+        "SELECT content FROM episodes WHERE id = ?", (r["episode_id"],)
+    ).fetchone()[0]
+    assert len(stored) < len(huge), "content was not truncated"
+    assert len(stored) <= MAX_CONTENT + 32, f"truncated to {len(stored)}, cap is {MAX_CONTENT}"
+    assert stored.endswith("[truncated]"), stored[-40:]
+
+
+def test_store_stays_usable_after_an_oversized_write():
+    m = Memory()
+    m.encode("The nightly batch failed because the upstream feed was empty. " * 5000, ts=T0)
+    m.encode("Chunking the feed to 20MB completed the batch.", outcome=True, ts=T0 + 60)
+    m.consolidate(now=T0 + DAY)
+    ctx = m.context("run the nightly batch", token_budget=600)
+    assert len(ctx) // 4 <= 800, f"budget blown by an oversized observation: {len(ctx) // 4} tokens"
 
 
 def test_file_store_uses_wal():

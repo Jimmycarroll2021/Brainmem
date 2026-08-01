@@ -106,6 +106,11 @@ def memory_write(
     # Report what actually happened, not what the gate said. A "redundant"
     # verdict can still be stored when the outcome conflicts with the thing it
     # resembles, and telling the agent otherwise would be a lie it acts on.
+    if r["verdict"] == "empty":
+        # Distinct from "already known". Reporting an empty write as a successful
+        # dedup is the same class of lie as misreporting an outcome conflict: the
+        # agent believes something was recorded when nothing was.
+        return "Nothing recorded — the observation was empty."
     if r["episode_id"] is None:
         return "Already known — strengthened the existing entry rather than duplicating it."
     if r["verdict"] == "redundant":

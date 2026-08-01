@@ -46,6 +46,15 @@ import numpy as np
 
 DAY = 86400.0
 
+# An observation is a sentence or two about something that happened. Past this it
+# is a document, and documents belong in the thing memory points at rather than in
+# memory. The cap matters because memory_write is reachable by an agent
+# summarising untrusted input: without it, one caller can put megabytes through
+# the embedder and into a store that three processes read on every session start.
+# Truncate rather than reject — the head of an observation carries the point, and
+# losing all of it is worse than losing the tail.
+MAX_CONTENT = 4000
+
 # --------------------------------------------------------------------------------
 # Pluggable model interfaces
 # --------------------------------------------------------------------------------
@@ -595,6 +604,17 @@ class Memory:
         already predicts the observation, we strengthen rather than duplicate.
         """
         content = self.redact(content)
+
+        # Bound the write before anything expensive touches it. An empty
+        # observation is not a memory: stored, it takes an episode row and later
+        # renders as a blank bullet inside a budget that had to drop something
+        # real to make room for it.
+        content = content.strip()
+        if not content:
+            return {"verdict": "empty", "episode_id": None, "target": None}
+        if len(content) > MAX_CONTENT:
+            content = content[:MAX_CONTENT].rstrip() + " …[truncated]"
+
         now = ts if ts is not None else time.time()
         v = self._vec(content)
 

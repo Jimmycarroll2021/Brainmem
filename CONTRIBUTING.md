@@ -95,8 +95,12 @@ you know what has and has not been checked:
 - **Adversarial content** — empty strings, 1MB blobs, null bytes, SQL fragments, RTL
   text, control characters, forged envelope tags: no crashes, no injection (queries
   are parameterised), table intact.
-- **Not bounded**: `encode()` accepts empty content and arbitrarily large content.
-  Both are stored. If you expose `memory_write` to an untrusted caller, cap it.
+- **Bounded now**: `encode()` refuses empty content and truncates past
+  `MAX_CONTENT` (4000 chars). Before this, one caller could push megabytes through
+  the embedder into a store three processes read on every session start.
+- **Envelope forgery is defended, instruction-shaped content is not.** See
+  `SECURITY.md` — memory is a persistence layer for prompt injection, and that is
+  the property to reason about before deploying it.
 
 ## Optional backends
 

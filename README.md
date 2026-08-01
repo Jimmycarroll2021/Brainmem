@@ -286,6 +286,16 @@ python demo.py            # full lifecycle, no API key needed
 
 Green on Linux, macOS and Windows across Python 3.10–3.13.
 
+## Security
+
+brainmem writes text into a model's context and replays it at the start of every
+future session, which makes it a **persistence layer for prompt injection**. A normal
+injection lasts one turn; one that reaches memory lasts until someone deletes the row.
+Envelope forgery and unbounded writes are defended against; believable false
+statements are not, because the gate tests novelty rather than truth.
+
+Read [SECURITY.md](SECURITY.md) before pointing `memory_write` at anything untrusted.
+
 ## What remains unproven
 
 Surprisal-gated writes are principled, but I know of no clean benchmark showing they
