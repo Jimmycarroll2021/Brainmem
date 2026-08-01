@@ -98,6 +98,49 @@ class HashEmbedder:
         return out / norms
 
 
+class SentenceTransformerEmbedder:
+    """Real semantic embeddings. `pip install 'brainmem[embeddings]'`.
+
+    HashEmbedder has no semantic generalisation: "the batch aborted" and "the job
+    failed" share no n-grams and therefore no vector mass, so a lesson recorded in
+    one vocabulary is invisible to a query phrased in another. That is the single
+    largest quality gap in the offline default and the reason retrieval on a fresh
+    store looks worse than the design deserves.
+    """
+
+    def __init__(self, model: str = "all-MiniLM-L6-v2") -> None:
+        try:
+            from sentence_transformers import SentenceTransformer  # noqa: PLC0415
+        except ImportError as e:
+            raise ImportError(
+                "sentence-transformers is not installed. pip install 'brainmem[embeddings]'"
+            ) from e
+        self._m = SentenceTransformer(model)
+        self.dim = int(self._m.get_sentence_embedding_dimension())
+
+    def embed(self, texts: Sequence[str]) -> np.ndarray:
+        v = self._m.encode(list(texts), normalize_embeddings=True, show_progress_bar=False)
+        return np.asarray(v, dtype=np.float32)
+
+
+_EMBEDDERS = {"hash": HashEmbedder, "sentence-transformers": SentenceTransformerEmbedder}
+
+
+def make_embedder(name: str | None = None) -> Embedder:
+    """Select the embedder once, so every entry point agrees.
+
+    The hook, the CLI and the MCP server are separate processes over one database.
+    If they disagree about the embedder, stored vectors and query vectors come from
+    different spaces and retrieval degrades silently — the same failure shape as a
+    per-process hash seed. An unknown name therefore raises rather than falling
+    back to the offline default.
+    """
+    key = (name or os.environ.get("BRAINMEM_EMBEDDER") or "hash").strip()
+    if key not in _EMBEDDERS:
+        raise ValueError(f"unknown embedder {key!r}; choose one of {sorted(_EMBEDDERS)}")
+    return _EMBEDDERS[key]()
+
+
 class HeuristicLLM:
     """Offline stand-in so the system runs with no API key.
 

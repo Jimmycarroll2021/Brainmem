@@ -25,7 +25,7 @@ from typing import Literal
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from brainmem import Memory  # noqa: E402
+from brainmem import Memory, make_embedder  # noqa: E402
 
 # The SDK renamed FastMCP -> MCPServer in 2.0 and dropped the old module
 # entirely, so a single import breaks on one version or the other. Both expose
@@ -49,7 +49,7 @@ def _mem() -> Memory:
         from brainmem import AnthropicLLM
 
         llm = AnthropicLLM()
-    return Memory(path=_DB, llm=llm)
+    return Memory(path=_DB, embedder=make_embedder(), llm=llm)
 
 
 @mcp.tool()

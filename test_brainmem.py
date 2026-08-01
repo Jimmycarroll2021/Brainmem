@@ -15,7 +15,16 @@ from types import SimpleNamespace
 
 HERE = str(pathlib.Path(__file__).resolve().parent)
 
-from brainmem import DAY, AnthropicLLM, Fact, HeuristicLLM, Memory, _serial_position
+from brainmem import (
+    DAY,
+    AnthropicLLM,
+    Fact,
+    HashEmbedder,
+    HeuristicLLM,
+    Memory,
+    _serial_position,
+    make_embedder,
+)
 
 T0 = time.time() - 30 * DAY
 
@@ -92,6 +101,50 @@ def test_high_support_facts_survive_decay():
     m.db.execute("UPDATE facts SET support = 6, confidence = 0.9")
     m.db.commit()
     assert m.decay(now=time.time() + 400 * DAY)["facts_retired"] == 0
+
+
+def test_make_embedder_defaults_to_hash():
+    assert isinstance(make_embedder(), HashEmbedder)
+
+
+def test_make_embedder_honours_explicit_name():
+    assert isinstance(make_embedder("hash"), HashEmbedder)
+
+
+def test_unknown_embedder_fails_loudly():
+    """A typo must not silently downgrade retrieval to the offline fallback.
+
+    Falling back would leave a store whose vectors came from two different
+    spaces — the same silent-corruption shape as the salted hash, so it errors.
+    """
+    try:
+        make_embedder("sentence-transformer")  # missing plural
+    except ValueError as e:
+        assert "sentence-transformer" in str(e)
+    else:
+        raise AssertionError("unknown embedder must raise, not fall back")
+
+
+def test_missing_optional_backend_names_the_extra():
+    """The failure a user actually hits: asked for the real embedder, hasn't installed it."""
+    import builtins
+
+    real = builtins.__import__
+
+    def blocked(name, *a, **k):
+        if name.startswith("sentence_transformers"):
+            raise ImportError("no module named sentence_transformers")
+        return real(name, *a, **k)
+
+    builtins.__import__ = blocked
+    try:
+        make_embedder("sentence-transformers")
+    except ImportError as e:
+        assert "brainmem[embeddings]" in str(e), str(e)
+    else:
+        raise AssertionError("must raise ImportError naming the extra")
+    finally:
+        builtins.__import__ = real
 
 
 def test_embedding_is_stable_across_processes():

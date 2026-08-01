@@ -21,7 +21,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from brainmem import Memory  # noqa: E402
+from brainmem import Memory, make_embedder  # noqa: E402
 
 
 def db_path() -> str:
@@ -41,7 +41,7 @@ def build() -> Memory:
         from brainmem import AnthropicLLM
 
         llm = AnthropicLLM()
-    return Memory(path=db_path(), llm=llm)
+    return Memory(path=db_path(), embedder=make_embedder(), llm=llm)
 
 
 def main() -> int:
