@@ -45,6 +45,43 @@ anything about how the pieces are wired together — paths, processes, the MCP
 schema, the hook contract — the test for it belongs there, not in
 `test_brainmem.py`.
 
+## The full list of silent failures
+
+The README carries four of these. Here is the rest, because together they are the
+argument for the four-suite structure above:
+
+- **MCP SDK 2.0 removed `mcp.server.fastmcp`.** The server imported a module that no
+  longer exists. `brainmem_mcp.py` now tries `MCPServer` and falls back to `FastMCP`.
+- **`memory_write` misreported outcome conflicts.** It reported "already known" based
+  on the gate's verdict while the episode had in fact been stored. The data was right
+  and the tool was lying to the agent about it.
+- **The token budget only governed facts.** Recent events and skills were unbounded,
+  so `token_budget` was closer to a suggestion. Everything is fitted now, in priority
+  order: failures, facts, procedures, raw events.
+- **`install.sh` and `smoke_test.sh` copied from an `integration/` directory that
+  does not exist.** Both die on that line under `set -e`, so neither the installer
+  nor the shell suite could run at all. Nothing that merely imports the library
+  notices.
+- **The dead-hook failure has a Windows form.** Generated paths were `/c/Users/...`,
+  which the process Claude Code spawns cannot resolve, and hooks relied on the
+  executable bit rather than an explicit interpreter. Now `cygpath` plus
+  `bash "<script>"`.
+- **One `--success` pinned confidence to 1.00.** `conf = n_success/n_total` overwrote
+  the distilled prior, so a belief labelled `unverified, n=1` jumped to maximum
+  confidence and 1/1 ranked identically to 9/9. Now Laplace-smoothed: 0.67 and 0.91.
+- **Distillation split clauses into claims.** `_extract` kept any 12-240 char
+  fragment, so "...not yet load-tested at that volume" became a standalone fact whose
+  antecedent stayed behind in L1. Once embedded, a fragment is indistinguishable from
+  a fact: it ranks, it fits the budget, it gets injected.
+- **`memory_write` silently coerced unrecognised outcomes.** `outcome` was a bare
+  `str` in a dict lookup, so a near-miss like `"failure"` became `unknown` — the
+  failure signal discarded, and with no outcome left to conflict the observation was
+  swallowed as redundant and reported as "already known". It is a `Literal` now,
+  enumerated in the tool schema.
+- **A `cp` that failed silently.** `smoke_test.sh` runs without `set -e`, so when a
+  renamed file stopped existing the copy failed, the install was half-done, and all
+  29 checks still reported green. The install step now asserts each file landed.
+
 ## Optional backends
 
 ```bash
