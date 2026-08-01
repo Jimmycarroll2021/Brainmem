@@ -617,6 +617,44 @@ def _fake_anthropic(blocks: list[_Block] | None = None, error: Exception | None 
             sys.modules["anthropic"] = saved
 
 
+def _live_judge_available() -> bool:
+    """Credentials resolve from env vars OR an OAuth profile on disk, so probe the
+    SDK rather than checking one variable and wrongly concluding there is no auth."""
+    try:
+        import anthropic
+    except ImportError:
+        return False
+    try:
+        anthropic.Anthropic()
+        return True
+    except Exception:
+        return False
+
+
+def test_live_judge_detects_contradiction_the_heuristic_misses():
+    """The README's central claim about the real judge, actually exercised.
+
+    Skips without credentials — CI on a public repo has none. HeuristicLLM keys
+    contradiction off state-change cues (NEG); a role *transfer* carries none, so
+    it reads as agreement. This is the case a real judge is supposed to catch.
+    """
+    user = (
+        "OBSERVATION: The Education engagement is now run by Tom Nguyen.\n"
+        "CANDIDATES:\n  [f1] The Education engagement is led by Priya Raman."
+    )
+    heuristic = json.loads(HeuristicLLM().complete(Memory.GATE_SYS, user))["verdict"]
+    assert heuristic != "contradiction", (
+        "baseline moved: the heuristic now catches this, so the test no longer "
+        f"demonstrates the gap (got {heuristic!r})"
+    )
+    if not _live_judge_available():
+        print("       (live judge skipped: no Anthropic credentials)")
+        return
+    raw = AnthropicLLM().complete(Memory.GATE_SYS, user).strip()
+    raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    assert json.loads(raw).get("verdict") == "contradiction", f"got {raw!r}"
+
+
 def test_anthropic_llm_joins_text_and_ignores_reasoning_blocks():
     """Thinking is on by default on current models, so every response carries
     non-text blocks. Concatenating them would corrupt the JSON."""
