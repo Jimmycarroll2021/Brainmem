@@ -18,7 +18,15 @@ import time
 
 from brainmem import Memory, _blob
 
-WORDS = ["payroll", "telemetry", "roster", "invoice", "backup", "audit", "vendor", "capacity", "checkout", "search", "billing", "onboarding", "reporting", "ingest", "failover", "caching", "latency", "throughput", "quota", "shard", "replica", "index", "migration", "rollback", "deploy", "incident", "alert", "threshold", "pipeline", "schema", "partition", "region", "cluster", "tenant", "contract", "renewal", "approval", "cutoff", "retention", "sampling", "seed", "budget"]
+WORDS = [
+    "payroll", "telemetry", "roster", "invoice", "backup", "audit",
+    "vendor", "capacity", "checkout", "search", "billing", "onboarding",
+    "reporting", "ingest", "failover", "caching", "latency", "throughput",
+    "quota", "shard", "replica", "index", "migration", "rollback",
+    "deploy", "incident", "alert", "threshold", "pipeline", "schema",
+    "partition", "region", "cluster", "tenant", "contract", "renewal",
+    "approval", "cutoff", "retention", "sampling", "seed", "budget",
+]
 
 
 def sentence(rng: random.Random) -> str:
