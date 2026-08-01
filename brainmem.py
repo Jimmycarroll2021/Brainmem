@@ -30,6 +30,7 @@ above ~100k rows; nothing else needs to change.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import math
@@ -524,6 +525,17 @@ class Memory:
     ) -> None:
         self.db = sqlite3.connect(path)
         self.db.row_factory = sqlite3.Row
+        # Three processes share one store — the SessionStart hook, the CLI and the
+        # MCP server. Under the default rollback journal a reader blocks the writer
+        # and vice versa, so a SessionEnd consolidation can stall the next session's
+        # start. WAL lets them proceed concurrently, and NORMAL stops fsyncing on
+        # every commit (a crash can lose the last transaction, which for an
+        # append-only observation log is a fair trade for not blocking a session).
+        # Both are best-effort: `:memory:` cannot do WAL, and neither can a store on
+        # a network filesystem. Failing to upgrade is not a reason to refuse to run.
+        with contextlib.suppress(sqlite3.DatabaseError):
+            self.db.execute("PRAGMA journal_mode=WAL")
+            self.db.execute("PRAGMA synchronous=NORMAL")
         self.db.executescript(SCHEMA)
         self.emb = embedder or HashEmbedder()
         self.llm = llm or HeuristicLLM()

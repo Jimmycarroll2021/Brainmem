@@ -26,8 +26,17 @@ if [ -z "$GOAL" ] && [ ! -t 0 ]; then
   else
     INPUT=$(cat 2>/dev/null || true)
   fi
-  if [ -n "${INPUT:-}" ] && command -v jq >/dev/null 2>&1; then
-    CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null || true)
+  # Parsed with python3, not jq. python3 is already a hard requirement four lines
+  # below; jq is not, and is absent on plenty of minimal images. Depending on it
+  # meant the goal quietly stopped being conditioned wherever it was missing —
+  # the block still rendered, so nothing looked wrong.
+  if [ -n "${INPUT:-}" ]; then
+    CWD=$(printf '%s' "$INPUT" | python3 -c \
+      'import json,sys
+try:
+    print(json.load(sys.stdin).get("cwd") or "")
+except Exception:
+    pass' 2>/dev/null || true)
   fi
 fi
 GOAL="${GOAL:-general work in $(basename "${CWD:-$PWD}")}"

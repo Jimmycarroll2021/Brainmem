@@ -7,6 +7,7 @@ supersession, and the write gate — not the parts that fail loudly.
 import contextlib
 import json
 import pathlib
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -203,6 +204,52 @@ def test_cross_process_ranking_matches_in_process():
             [sys.executable, "-c", code, db], capture_output=True, text=True, cwd=HERE, check=False
         ).stdout.strip()
         assert str(in_proc) == out, f"in-process {in_proc} != cross-process {out}"
+
+
+def test_file_store_uses_wal():
+    """Three processes share one store: hook, CLI, MCP server. Under the default
+    rollback journal a reader blocks the writer and vice versa, so a consolidation
+    pass can stall a session start. WAL lets them proceed concurrently."""
+    with tempfile.TemporaryDirectory() as d:
+        m = Memory(path=str(pathlib.Path(d) / "m.db"))
+        mode = m.db.execute("PRAGMA journal_mode").fetchone()[0]
+        assert mode.lower() == "wal", f"file store should be WAL, got {mode!r}"
+        m.db.close()
+
+
+def test_in_memory_store_survives_the_wal_attempt():
+    """`:memory:` cannot do WAL. Asking for it must not raise — the unit suite and
+    every library user who omits a path run this way."""
+    m = Memory()
+    m.encode("An observation in a transient store.", ts=T0)
+    m.consolidate(now=T0 + DAY)
+    assert m.stats()["episodes"] == 1
+
+
+def test_wal_store_is_readable_by_a_separate_process():
+    """WAL keeps its committed data in a sidecar until checkpoint. If the writer
+    never checkpoints or closes, a second process sees an empty store — which is
+    exactly the cross-process path this project runs on."""
+    d = tempfile.mkdtemp()
+    db = str(pathlib.Path(d) / "m.db")
+    m = Memory(path=db)
+    try:
+        m.encode("Validation of the 60MB input CSV timed out.", outcome=False, ts=T0)
+        m.consolidate(now=T0 + DAY)
+        # Deliberately still open — the CLI and the hook exit without closing too,
+        # so the reader must not depend on the writer having checkpointed.
+        code = (
+            "import sys;from brainmem import Memory;"
+            "print(Memory(path=sys.argv[1]).stats()['facts_live'])"
+        )
+        out = subprocess.run(
+            [sys.executable, "-c", code, db], capture_output=True, text=True, cwd=HERE, check=False
+        ).stdout.strip()
+        assert out == "1", f"second process saw {out!r} live facts, expected 1"
+    finally:
+        # WAL holds -wal/-shm open; on Windows an open file cannot be unlinked.
+        m.db.close()
+        shutil.rmtree(d, ignore_errors=True)
 
 
 def test_nearest_facts_matches_a_brute_force_reference():

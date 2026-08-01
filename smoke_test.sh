@@ -94,6 +94,18 @@ OUT=$(printf '%s' "$PAYLOAD" | bash "$PREFIX/session_start.sh" 2>&1)
 contains "$OUT" "<memory" "hook reads a stdin payload"
 contains "$OUT" "validation-project" "goal is taken from the stdin payload, not argv"
 
+# jq is not a declared dependency and is absent on plenty of minimal boxes, while
+# python3 is already required two lines below. Parsing with jq meant the goal
+# silently stopped being conditioned wherever jq was missing — the same invisible
+# degradation as reading it from argv.
+mkdir -p "$PREFIX/nojq"
+printf '#!/bin/sh
+exit 127
+' > "$PREFIX/nojq/jq"
+chmod +x "$PREFIX/nojq/jq"
+OUT=$(printf '%s' "$PAYLOAD" | PATH="$PREFIX/nojq:$PATH" bash "$PREFIX/session_start.sh" 2>&1)
+contains "$OUT" "validation-project" "goal survives with jq unavailable"
+
 # Malformed stdin must degrade to the default goal, not take the session down.
 OUT=$(printf 'not json at all' | bash "$PREFIX/session_start.sh" 2>&1)
 RC=$?
