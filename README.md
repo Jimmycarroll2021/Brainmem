@@ -61,6 +61,39 @@ All four pass on a clean checkout, on Linux, macOS and Windows across Python
 `mcp` extra; the rest need only numpy. See [CONTRIBUTING.md](CONTRIBUTING.md) for
 why the shell and MCP suites exist separately from the unit tests.
 
+## Where this sits
+
+Agent memory is a crowded field and most of it is bigger than this. brainmem is
+deliberately small: one readable Python module, numpy as the only required
+dependency, SQLite on disk, no service to run.
+
+It is built around three claims that are unusual rather than better:
+
+1. **Attention is the binding constraint, not storage.** Retrieval is fitted to a
+   token budget in priority order, and the assembled block is ordered in a
+   serial-position V because the middle of a context window is where things go to
+   be ignored. Writing is gated on surprise, so the store grows on novelty rather
+   than volume.
+2. **Beliefs have a validity interval, and nothing is deleted.** A contradiction
+   closes the old belief off and links the successor. `retrieve(..., at=t)` answers
+   *what did the agent believe last Tuesday, and on what evidence* — which is the
+   question you need when an agent did something surprising.
+3. **Failures are a separate valence, and they lead.** They distil under their own
+   prompt, rank separately, and are fitted to the budget *before* facts, so under
+   pressure they are the last thing dropped. Ma et al. (2026) ablated this:
+   removing failure reasons cost 8 points, removing success patterns cost 2. Most
+   stores keep only what worked.
+
+**Use something else if:** you want a managed service, multi-tenant user profiles,
+or a knowledge graph over a large corpus. [mem0](https://github.com/mem0ai/mem0),
+[cognee](https://github.com/topoteretes/cognee), [Letta](https://github.com/letta-ai/letta)
+and [Zep](https://github.com/getzep/zep) are all larger, more featureful, and more
+production-hardened than this is. [HippoRAG](https://github.com/OSU-NLP-Group/HippoRAG)
+is the research-grade take on memory-inspired retrieval.
+
+**Use this if** you want something you can read end to end in an afternoon, audit
+the provenance of every belief, and wire into Claude Code in one command.
+
 ## Layers
 
 | Layer | Role | Key property |
@@ -71,15 +104,81 @@ why the shell and MCP suites exist separately from the unit tests.
 | L3 procedural | cached action sequences | scored by success rate |
 | core | pinned identity | always loaded |
 
+```mermaid
+flowchart LR
+    E["<b>L1 episodic</b><br/>append-only, immutable<br/>carries outcome"]
+    E -->|"consolidate()<br/><i>the sleep pass</i>"| SPLIT{"outcome"}
+
+    SPLIT -->|"failed"| F["<b>valence = failure</b><br/>'Avoid: X fails when Y'"]
+    SPLIT -->|"ok / unknown"| FACT["<b>valence = fact</b>"]
+
+    F --> RANK["<b>retrieve()</b><br/>utility = 0.7·confidence + 0.3·usage<br/>+ MMR diversity"]
+    FACT --> RANK
+
+    RANK --> CTX["<b>context()</b><br/>token-budgeted<br/>failures fitted first"]
+    OUT["record_outcome()"] -.->|"the only thing that<br/>moves confidence"| RANK
+    RANK -.->|"decay() · prune_guidelines()"| GONE["retired<br/><i>still queryable with at=t</i>"]
+
+    classDef fail fill:#ffeef0,stroke:#d1495b
+    class F fail
+```
+
 Processes: `encode()` gates on novelty, `consolidate()` distils offline, `retrieve()` ranks and diversifies, `record_outcome()` closes the feedback loop, `decay()`/`prune_guidelines()` forget.
 
 ## Two ways memory reaches the agent
+
+```mermaid
+flowchart TD
+    DB[("SQLite store<br/>episodes · facts · skills")]
+
+    DB -->|"SessionStart hook<br/>~600 tokens, before turn 1"| BLOCK["<b>Context block</b><br/>failures → facts → recent events"]
+    BLOCK --> AGENT(["Agent"])
+
+    AGENT <-->|"memory_search · memory_write<br/><i>at inference time, goal known</i>"| MCP["MCP tools"]
+    MCP <--> DB
+
+    AGENT -->|"memory_outcome<br/><i>did acting on it work?</i>"| MCP
+    AGENT -.->|"SessionEnd: consolidate · prune · decay"| DB
+
+    classDef floor fill:#eef4ff,stroke:#5b7cfa
+    classDef ceil fill:#eefaf0,stroke:#3fa96a
+    class BLOCK floor
+    class MCP ceil
+```
 
 **SessionStart hook** — injects ~600 tokens before the first turn. A floor, not the whole store. It pre-commits against an unknown goal, so it stays small deliberately.
 
 **MCP tools** — `memory_search`, `memory_write`, `memory_outcome`, `memory_explain`, `memory_status`. Defers retrieval to inference time, when the agent knows what it's doing. This is the ceiling.
 
 `SessionEnd` runs `maintain`: consolidate, prune, decay. That's the sleep pass — LLM-expensive and batched, because finding the invariant across events needs several events at once.
+
+## The write gate
+
+The single highest-leverage decision is what *not* to store. Encoding is driven by
+prediction error: if the store already predicts the observation, strengthen instead
+of duplicating.
+
+```mermaid
+flowchart TD
+    OBS["New observation"] --> GATE{"Compare against nearest facts<br/>+ unconsolidated episodes"}
+
+    GATE -->|novel| STORE["Store episode"]
+    GATE -->|refinement| STORE
+    GATE -->|contradiction| SUP["Store, and close off the old belief<br/><i>valid_to set, superseded_by linked</i>"]
+    GATE -->|redundant| CONF{"Outcome differs from<br/>the thing it resembles?"}
+
+    CONF -->|no| STRONG["Strengthen support only<br/><i>no new row, no confidence change</i>"]
+    CONF -->|"yes — did this before,<br/>got a different result"| STORE
+
+    classDef keep fill:#eefaf0,stroke:#3fa96a
+    classDef drop fill:#fff4e6,stroke:#e8973a
+    class STORE,SUP keep
+    class STRONG drop
+```
+
+Nothing is deleted on contradiction. The old belief keeps its validity interval and
+its provenance, which is what makes `retrieve(..., at=t)` able to answer *what did
+the agent believe last Tuesday*.
 
 ## The outcome channel
 
