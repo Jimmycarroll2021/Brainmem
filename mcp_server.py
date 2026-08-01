@@ -46,7 +46,7 @@ def _mem() -> Memory:
     # servers are concurrent. Cheap enough that pooling isn't worth the risk.
     llm = None
     if os.environ.get("BRAINMEM_LLM") == "anthropic":
-        from brainmem import AnthropicLLM
+        from brainmem import AnthropicLLM  # noqa: PLC0415
 
         llm = AnthropicLLM()
     return Memory(path=_DB, embedder=make_embedder(), llm=llm)

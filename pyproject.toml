@@ -58,7 +58,17 @@ target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "PL"]
-ignore = ["PLR0912", "PLR0913", "PLR0915", "PLR2004", "E741"]
+# Style opinions this codebase deliberately disagrees with, not latent bugs:
+#   PLR09xx  the gate/consolidate functions are long and branchy because the
+#            decision they encode is; splitting them would scatter one argument.
+#   PLR2004  thresholds are named and explained in prose at their use site.
+#   PLW2901  rebinding a loop variable while normalising it is the clearest form.
+#   PLW0108  the lambda in _gate documents the key being minimised over.
+#   E741     `l` is not used; `I` appears only in matrix maths.
+ignore = [
+  "PLR0912", "PLR0913", "PLR0915", "PLR0917", "PLR2004",
+  "PLW2901", "PLW0108", "E741",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["."]

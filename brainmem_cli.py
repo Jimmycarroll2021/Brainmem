@@ -38,7 +38,7 @@ def build() -> Memory:
     """
     llm = None
     if os.environ.get("BRAINMEM_LLM") == "anthropic":
-        from brainmem import AnthropicLLM
+        from brainmem import AnthropicLLM  # noqa: PLC0415
 
         llm = AnthropicLLM()
     return Memory(path=db_path(), embedder=make_embedder(), llm=llm)

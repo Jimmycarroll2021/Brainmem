@@ -37,8 +37,9 @@ import os
 import re
 import sqlite3
 import time
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Protocol, Sequence
+from typing import Any, Protocol
 
 import numpy as np
 
@@ -90,7 +91,7 @@ class HashEmbedder:
         out = np.zeros((len(texts), self.dim), dtype=np.float32)
         for i, t in enumerate(texts):
             toks = re.findall(r"[a-z0-9]+", t.lower())
-            grams = toks + [f"{a}_{b}" for a, b in zip(toks, toks[1:])]
+            grams = toks + [f"{a}_{b}" for a, b in zip(toks, toks[1:], strict=False)]
             for g in grams:
                 out[i, _stable_hash(g) % self.dim] += 1.0
         norms = np.linalg.norm(out, axis=1, keepdims=True)

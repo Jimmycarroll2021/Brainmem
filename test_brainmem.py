@@ -13,8 +13,6 @@ import tempfile
 import time
 from types import SimpleNamespace
 
-HERE = str(pathlib.Path(__file__).resolve().parent)
-
 from brainmem import (
     DAY,
     AnthropicLLM,
@@ -26,6 +24,7 @@ from brainmem import (
     make_embedder,
 )
 
+HERE = str(pathlib.Path(__file__).resolve().parent)
 T0 = time.time() - 30 * DAY
 
 
@@ -127,7 +126,7 @@ def test_unknown_embedder_fails_loudly():
 
 def test_missing_optional_backend_names_the_extra():
     """The failure a user actually hits: asked for the real embedder, hasn't installed it."""
-    import builtins
+    import builtins  # noqa: PLC0415
 
     real = builtins.__import__
 
@@ -158,7 +157,7 @@ def test_embedding_is_stable_across_processes():
     )
     runs = {
         subprocess.run(
-            [sys.executable, "-c", code], capture_output=True, text=True, cwd=HERE
+            [sys.executable, "-c", code], capture_output=True, text=True, cwd=HERE, check=False
         ).stdout.strip()
         for _ in range(3)
     }
@@ -198,7 +197,7 @@ def test_cross_process_ranking_matches_in_process():
             f"print([f.id for f in m.retrieve({q!r}, k=5)])"
         )
         out = subprocess.run(
-            [sys.executable, "-c", code, db], capture_output=True, text=True, cwd=HERE
+            [sys.executable, "-c", code, db], capture_output=True, text=True, cwd=HERE, check=False
         ).stdout.strip()
         assert str(in_proc) == out, f"in-process {in_proc} != cross-process {out}"
 
@@ -550,7 +549,9 @@ def test_fragment_opening_on_a_pronoun_is_dropped():
 
 
 def test_unresolved_demonstrative_is_dropped():
-    out = _props("The load test peaked at 5,000 rps. Throughput was never validated at that volume.")
+    out = _props(
+        "The load test peaked at 5,000 rps. Throughput was never validated at that volume."
+    )
     assert any("5,000 rps" in p for p in out), out
     assert not any("that volume" in p for p in out), out
 
@@ -621,7 +622,7 @@ def _live_judge_available() -> bool:
     """Credentials resolve from env vars OR an OAuth profile on disk, so probe the
     SDK rather than checking one variable and wrongly concluding there is no auth."""
     try:
-        import anthropic
+        import anthropic  # noqa: PLC0415
     except ImportError:
         return False
     try:

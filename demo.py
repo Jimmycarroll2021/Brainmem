@@ -25,7 +25,8 @@ stream = [
     (3, "system", "Validation of the 60MB input CSV timed out.", False),
     (4, "self", "Splitting the CSV into 20MB chunks before validation completed.", True),
     (5, "self", "Validation of the 60MB input CSV timed out.", False),  # same text, still kept
-    (9, "client", "Priya Raman has left the Department; Tom Nguyen now leads the engagement.", None),
+    (9, "client",
+     "Priya Raman has left the Department; Tom Nguyen now leads the engagement.", None),
     (10, "client", "Tom Nguyen is the new departmental lead.", None),
 ]
 
