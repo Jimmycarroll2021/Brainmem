@@ -1,0 +1,65 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "brainmem"
+version = "0.1.0"
+description = "Agent memory gated on surprise, budgeted on attention, with provenance and validity intervals."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "Jimmi Carroll" }]
+keywords = ["llm", "agent", "memory", "mcp", "claude", "retrieval", "rag"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = ["numpy>=1.24"]
+
+[project.optional-dependencies]
+mcp = ["mcp[cli]>=1.0"]
+anthropic = ["anthropic>=0.40"]
+embeddings = ["sentence-transformers>=3.0"]
+dev = ["ruff>=0.6", "pytest>=8.0"]
+
+[project.urls]
+Homepage = "https://github.com/Jimmycarroll2021/Brainmem"
+Issues = "https://github.com/Jimmycarroll2021/Brainmem/issues"
+
+[project.scripts]
+brainmem = "brainmem_cli:main"
+
+[tool.hatch.build.targets.wheel]
+include = ["brainmem.py", "brainmem_cli.py", "mcp_server.py"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "brainmem.py",
+  "brainmem_cli.py",
+  "mcp_server.py",
+  "test_brainmem.py",
+  "demo.py",
+  "e2e_mcp.py",
+  "*.sh",
+  "README.md",
+  "LICENSE",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "PL"]
+ignore = ["PLR0912", "PLR0913", "PLR0915", "PLR2004", "E741"]
+
+[tool.pytest.ini_options]
+testpaths = ["."]
+python_files = ["test_*.py"]
