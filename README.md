@@ -213,7 +213,7 @@ Bugs the unit tests could not have caught, listed because they show what the
 suites are for:
 
 - **MCP SDK 2.0 removed `mcp.server.fastmcp`.** The server imported a module that
-  no longer exists. `mcp_server.py` now tries `MCPServer` and falls back to
+  no longer exists. `brainmem_mcp.py` now tries `MCPServer` and falls back to
   `FastMCP`, so it runs on both.
 - **`memory_write` misreported outcome conflicts.** It said "already known" based
   on the gate's verdict, while the episode had in fact been stored. The data was

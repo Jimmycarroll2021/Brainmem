@@ -1,7 +1,7 @@
 """brainmem as an MCP server — memory the agent can pull, not just receive.
 
-    pip install "mcp[cli]"
-    python mcp_server.py
+    pip install 'brainmem[mcp]'
+    brainmem-mcp          # or: python brainmem_mcp.py
 
 Why this exists alongside the SessionStart hook: the hook pre-commits to a
 context block before the goal is known, using one query embedding. Exposing
@@ -150,5 +150,13 @@ def memory_status() -> str:
     return "\n".join(f"{k}: {v}" for k, v in _mem().stats().items())
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """Console-script entry point (`brainmem-mcp`).
+
+    Also runnable by path, which is how install.sh wires it into settings.json.
+    """
     mcp.run()
+
+
+if __name__ == "__main__":
+    main()

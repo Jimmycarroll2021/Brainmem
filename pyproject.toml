@@ -35,15 +35,16 @@ Issues = "https://github.com/Jimmycarroll2021/Brainmem/issues"
 
 [project.scripts]
 brainmem = "brainmem_cli:main"
+brainmem-mcp = "brainmem_mcp:main"
 
 [tool.hatch.build.targets.wheel]
-include = ["brainmem.py", "brainmem_cli.py", "mcp_server.py"]
+include = ["brainmem.py", "brainmem_cli.py", "brainmem_mcp.py"]
 
 [tool.hatch.build.targets.sdist]
 include = [
   "brainmem.py",
   "brainmem_cli.py",
-  "mcp_server.py",
+  "brainmem_mcp.py",
   "test_brainmem.py",
   "demo.py",
   "e2e_mcp.py",

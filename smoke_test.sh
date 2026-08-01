@@ -27,10 +27,12 @@ contains() {
 trap 'rm -rf "$PREFIX"' EXIT
 
 echo "=== install ($PREFIX) ==="
-cp "$SRC/brainmem.py" "$SRC/brainmem_cli.py" "$SRC/mcp_server.py" "$PREFIX/"
+cp "$SRC/brainmem.py" "$SRC/brainmem_cli.py" "$SRC/brainmem_mcp.py" "$PREFIX/"
 cp "$SRC/session_start.sh" "$SRC/session_end.sh" "$PREFIX/"
 chmod +x "$PREFIX"/*.sh
-[ -f "$PREFIX/brainmem.py" ] && pass "files installed" || fail "files installed"
+for f in brainmem.py brainmem_cli.py brainmem_mcp.py session_start.sh session_end.sh; do
+  [ -f "$PREFIX/$f" ] && pass "installed $f" || fail "installed $f" "missing from $PREFIX"
+done
 
 echo
 echo "=== CLI (each command is its own process) ==="

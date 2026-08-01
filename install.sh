@@ -19,7 +19,7 @@ PY="${PY:-python3}"
 
 echo "installing to $PREFIX"
 mkdir -p "$PREFIX"
-cp "$SRC/brainmem.py" "$SRC/brainmem_cli.py" "$SRC/mcp_server.py" "$PREFIX/"
+cp "$SRC/brainmem.py" "$SRC/brainmem_cli.py" "$SRC/brainmem_mcp.py" "$PREFIX/"
 cp "$SRC/session_start.sh" "$SRC/session_end.sh" "$PREFIX/"
 chmod +x "$PREFIX"/*.sh
 
@@ -68,7 +68,7 @@ OUT="$PREFIX/settings-brainmem.json"
   if [ "$MCP_OK" = "1" ]; then
     printf ',\n  "mcpServers": {\n    "brainmem": {\n'
     printf '      "command": "%s",\n' "$PY_ABS"
-    printf '      "args": ["%s/mcp_server.py"],\n' "$PREFIX_NATIVE"
+    printf '      "args": ["%s/brainmem_mcp.py"],\n' "$PREFIX_NATIVE"
     printf '      "env": { "BRAINMEM_DB": "%s/memory.db" }\n' "$PREFIX_NATIVE"
     printf '    }\n  }'
   fi

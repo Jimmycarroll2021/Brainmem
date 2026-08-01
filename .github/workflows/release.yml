@@ -1,0 +1,79 @@
+name: Release
+
+# Publishes to PyPI when a GitHub Release is published.
+#
+# Auth is PyPI Trusted Publishing (OIDC) — there is no API token stored in this
+# repository, and there is nothing to leak or rotate. GitHub mints a short-lived
+# identity token for this exact workflow, and PyPI accepts it only for the
+# publisher configured against this repo + workflow + environment.
+#
+# One-time setup on pypi.org (Publishing → Add a pending publisher):
+#   PyPI project name : brainmem
+#   Owner             : Jimmycarroll2021
+#   Repository        : Brainmem
+#   Workflow name     : release.yml
+#   Environment       : pypi
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      # Never ship an artifact the suites have not run against.
+      - name: Install and verify
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[mcp,dev]"
+          python test_brainmem.py
+          python e2e_mcp.py
+          python demo.py
+          ruff check .
+
+      - name: Build
+        run: |
+          pip install build twine
+          python -m build
+          twine check dist/*
+
+      # The tag must match the version in pyproject.toml. A mismatch here means a
+      # release tagged v0.2.0 quietly uploading 0.1.0, which cannot be undone —
+      # PyPI does not allow re-uploading a version.
+      - name: Tag matches package version
+        if: github.event_name == 'release'
+        run: |
+          PKG=$(python -c "import tomllib,pathlib; print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")
+          TAG="${GITHUB_REF_NAME#v}"
+          echo "pyproject=$PKG  tag=$TAG"
+          [ "$PKG" = "$TAG" ] || { echo "::error::tag $TAG != pyproject version $PKG"; exit 1; }
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+
+  pypi:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/brainmem
+    permissions:
+      id-token: write # the OIDC token; this is the whole auth story
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@v1.14.2

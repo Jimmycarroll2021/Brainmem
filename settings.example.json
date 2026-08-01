@@ -11,7 +11,7 @@
   "mcpServers": {
     "brainmem": {
       "command": "/ABSOLUTE/PATH/TO/python3",
-      "args": ["/ABSOLUTE/PATH/TO/.brainmem/mcp_server.py"],
+      "args": ["/ABSOLUTE/PATH/TO/.brainmem/brainmem_mcp.py"],
       "env": { "BRAINMEM_DB": "/ABSOLUTE/PATH/TO/.brainmem/memory.db" }
     }
   }

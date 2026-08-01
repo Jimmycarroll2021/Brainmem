@@ -1,6 +1,6 @@
 """End-to-end MCP test: spawn the real server over stdio, call every tool.
 
-This is not a mock. It launches mcp_server.py as a subprocess, performs the MCP
+This is not a mock. It launches brainmem_mcp.py as a subprocess, performs the MCP
 handshake, lists tools, and exercises the full write -> consolidate -> search ->
 outcome -> explain loop through the protocol, then verifies the effects landed in
 the database on disk.
@@ -40,7 +40,7 @@ async def main() -> int:
     db = Path(tempfile.mkdtemp()) / "e2e.db"
     env = {**os.environ, "BRAINMEM_DB": str(db), "PYTHONPATH": str(HERE)}
     params = StdioServerParameters(
-        command=sys.executable, args=[str(HERE / "mcp_server.py")], env=env
+        command=sys.executable, args=[str(HERE / "brainmem_mcp.py")], env=env
     )
 
     print("=== MCP server over stdio ===")
