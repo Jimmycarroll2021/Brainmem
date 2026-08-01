@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.db
+maintain.log
+
+# Working artefacts from the agent that built this, not part of the project.
+docs/superpowers/

@@ -1,0 +1,18 @@
+{
+  "_comment": "DO NOT USE AS-IS. Run ./install.sh, which writes this file with absolute paths. Claude Code does NOT expand $HOME or ~ inside settings.json, so placeholder paths silently break the hooks.",
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [ { "type": "command", "command": "/ABSOLUTE/PATH/TO/.brainmem/session_start.sh" } ] }
+    ],
+    "SessionEnd": [
+      { "hooks": [ { "type": "command", "command": "/ABSOLUTE/PATH/TO/.brainmem/session_end.sh" } ] }
+    ]
+  },
+  "mcpServers": {
+    "brainmem": {
+      "command": "/ABSOLUTE/PATH/TO/python3",
+      "args": ["/ABSOLUTE/PATH/TO/.brainmem/mcp_server.py"],
+      "env": { "BRAINMEM_DB": "/ABSOLUTE/PATH/TO/.brainmem/memory.db" }
+    }
+  }
+}
