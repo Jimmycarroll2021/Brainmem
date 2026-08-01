@@ -82,6 +82,22 @@ argument for the four-suite structure above:
   renamed file stopped existing the copy failed, the install was half-done, and all
   29 checks still reported green. The install step now asserts each file landed.
 
+## Stress testing
+
+`python bench.py` measures retrieval against store size. Things already probed, so
+you know what has and has not been checked:
+
+- **8 concurrent processes writing one store**: no lost writes, no errors. SQLite's
+  default 5s `busy_timeout` absorbs it. Note the same 128 inputs produce a *different*
+  store serial vs parallel (18 facts vs 22) — the gate compares against what is
+  already there, so interleaving changes what counts as novel. Not data loss, but
+  don't expect byte-identical stores from identical input.
+- **Adversarial content** — empty strings, 1MB blobs, null bytes, SQL fragments, RTL
+  text, control characters, forged envelope tags: no crashes, no injection (queries
+  are parameterised), table intact.
+- **Not bounded**: `encode()` accepts empty content and arbitrarily large content.
+  Both are stored. If you expose `memory_write` to an untrusted caller, cap it.
+
 ## Optional backends
 
 ```bash

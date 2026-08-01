@@ -64,6 +64,32 @@ class LLM(Protocol):
         ...
 
 
+# Anything that can write to memory can try to close the block it will later be
+# rendered inside. Matches a tag whose name is "memory" regardless of case,
+# leading slash, or whitespace before the bracket — `</MEMORY >` is the same
+# attack as `</memory>`, and a filter that only catches the literal is not a
+# filter. Deliberately narrow: real content is full of `<200ms` and `a > b`, and
+# escaping those would make the block unreadable to buy nothing.
+_ENVELOPE = re.compile(r"<(\s*/?\s*memory)\b", re.IGNORECASE)
+
+
+def _neutralise(text: str) -> str:
+    """Make stored text unable to forge the envelope it is rendered inside.
+
+    context() output is injected into an agent's context wrapped in
+    <memory source="brainmem">...</memory>, and the "evidence, not instruction"
+    caveat lives inside that wrapper. A stored proposition carrying a closing tag
+    would push everything after it outside the wrapper, where the caveat no longer
+    applies — and memory is replayed at the start of every future session, so the
+    injection persists rather than passing with the turn.
+
+    Escaping only the bracket keeps the text readable and self-evident: a reader
+    still sees what was stored, and the model cannot act on a tag that is no
+    longer a tag.
+    """
+    return _ENVELOPE.sub(r"&lt;\1", text)
+
+
 def _stable_hash(s: str) -> int:
     """Process-stable replacement for builtin hash().
 
@@ -862,20 +888,46 @@ class Memory:
     # =======================================================================
 
     def _nearest_facts(self, v: np.ndarray, k: int, at: float | None = None) -> list[Fact]:
+        """Brute-force cosine scan over live facts.
+
+        Scan only (id, embedding), then hydrate the k winners. Profiled at 100k
+        facts, the dot product is ~5ms and everything else is marshalling:
+        `SELECT *` cost 640ms and decoding one row at a time another 305ms, for a
+        296MB peak on a query that returns three rows. Selecting two columns and
+        decoding the blobs as a single buffer is ~2x faster and holds only the
+        embedding matrix. The maths is untouched — see
+        test_nearest_facts_matches_a_brute_force_reference.
+
+        This is still O(n) per query and is meant to be: it is the honest
+        zero-dependency default. Past roughly 20k live facts the latency starts
+        to show up in the SessionStart hook; that is where pgvector or FAISS
+        earns its dependency, and only this method changes.
+        """
         if at is None:
-            rows = self._rows("SELECT * FROM facts WHERE valid_to IS NULL")
+            ids = self._rows("SELECT id, embedding FROM facts WHERE valid_to IS NULL")
         else:
-            rows = self._rows(
-                "SELECT * FROM facts WHERE valid_from <= ?"
+            ids = self._rows(
+                "SELECT id, embedding FROM facts WHERE valid_from <= ?"
                 " AND (valid_to IS NULL OR valid_to > ?)",
                 (at, at),
             )
-        if not rows:
+        if not ids:
             return []
-        mat = np.stack([_unblob(r["embedding"], self.emb.dim) for r in rows])
+        # One allocation for the whole matrix rather than one per row.
+        mat = np.frombuffer(
+            b"".join(r["embedding"] for r in ids), dtype=np.float32
+        ).reshape(len(ids), self.emb.dim)
         sims = mat @ v
         order = np.argsort(-sims)[:k]
-        return [_fact(rows[i], float(sims[i])) for i in order]
+
+        want = [int(ids[i]["id"]) for i in order]
+        score = {int(ids[i]["id"]): float(sims[i]) for i in order}
+        rows = self._rows(
+            f"SELECT * FROM facts WHERE id IN ({','.join('?' * len(want))})", want
+        )
+        by_id = {int(r["id"]): r for r in rows}
+        # Re-impose similarity order: SQL IN makes no ordering promise.
+        return [_fact(by_id[i], score[i]) for i in want if i in by_id]
 
     def retrieve(
         self,
@@ -1074,7 +1126,11 @@ class Memory:
         if kept_eps:
             parts.append("## Recent events\n" + "\n".join(kept_eps))
 
-        return "\n\n".join(parts)
+        # Neutralise once, on the assembled block, rather than at each render site:
+        # a section added later inherits the protection instead of quietly reopening
+        # the hole. This also covers the goal string, which arrives from the hook
+        # payload and is no more trustworthy than anything in the store.
+        return _neutralise("\n\n".join(parts))
 
     # =======================================================================
     # FORGET
