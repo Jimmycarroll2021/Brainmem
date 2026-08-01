@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / py${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[mcp,dev]"
+
+      # session_start.sh parses the hook payload with jq. Linux runners ship it;
+      # macOS runners do not, and without it the hook silently stops being
+      # goal-conditioned rather than failing — which is the bug the suite checks for.
+      - name: Install jq (macOS)
+        if: runner.os == 'macOS'
+        run: brew install jq
+
+      - name: Unit invariants
+        run: python test_brainmem.py
+
+      - name: Shell surface (hooks, CLI, cross-process persistence)
+        shell: bash
+        run: bash smoke_test.sh
+
+      - name: MCP end-to-end over stdio
+        run: python e2e_mcp.py
+
+      - name: Demo lifecycle
+        run: python demo.py
+
+      - name: Packaging installs from a clean directory
+        shell: bash
+        run: |
+          cd "$(mktemp -d)"
+          python -c "import brainmem, brainmem_cli; print('import ok')"
+          brainmem stats
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ruff
+      - run: ruff check .
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install build
+      - run: python -m build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/

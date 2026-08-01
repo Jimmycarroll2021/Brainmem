@@ -1,14 +1,39 @@
 # brainmem
 
+[![CI](https://github.com/Jimmycarroll2021/Brainmem/actions/workflows/ci.yml/badge.svg)](https://github.com/Jimmycarroll2021/Brainmem/actions/workflows/ci.yml)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+
 Agent memory built around the constraint that actually binds: storage is free, attention is not. Encoding is gated on surprise, retrieval is budgeted, and beliefs carry validity intervals and provenance so you can answer *what did the agent believe, when, and on what evidence*.
 
 ## Install
 
 ```bash
-pip install numpy                 # required
-pip install anthropic "mcp[cli]"  # real judge + MCP server
-./install.sh                      # PREFIX=/opt/brainmem ./install.sh to relocate
+pip install brainmem                          # core; numpy is the only dependency
+pip install 'brainmem[mcp,embeddings]'        # MCP tools + real semantic retrieval
+./install.sh                                  # wire into Claude Code (PREFIX=… to relocate)
 ```
+
+## 60 seconds
+
+```python
+from brainmem import Memory
+
+m = Memory("memory.db")
+m.encode("Validation of the 60MB CSV timed out.", outcome=False)
+m.encode("Chunking the CSV to 20MB completed validation.", outcome=True)
+m.consolidate()                      # distil episodes into durable facts
+
+print(m.context("run the validation batch", token_budget=600))
+# ## What has gone wrong before
+# - [1] Avoid: Validation of the 60MB CSV timed out  (unverified, n=1)
+# ## What I know
+# - [2] Chunking the CSV to 20MB completed validation  (conf 0.60, n=1)
+
+m.record_outcome(2, success=True)    # close the loop; this is what makes it learn
+```
+
+Or from the shell: `brainmem encode "..." --outcome fail`, `brainmem retrieve "..."`, `brainmem stats`.
 
 `install.sh` writes `~/.brainmem/settings-brainmem.json` with **absolute paths baked
 in**, then merge it into `~/.claude/settings.json`. Do not substitute `$HOME` or `~`:
@@ -24,14 +49,17 @@ replacing it, and re-run `install.sh` after installing the `mcp` SDK — the
 ## Verify
 
 ```bash
-python test_brainmem.py   # 18 invariants — gating, supersession, budget, utility
-./smoke_test.sh           # install, CLI, both hooks, cross-process persistence
-python e2e_mcp.py         # spawns the real MCP server over stdio, calls every tool
+python test_brainmem.py   # 44 invariants — gating, supersession, budget, utility
+bash smoke_test.sh        # 29 checks — install, CLI, both hooks, cross-process persistence
+python e2e_mcp.py         # 22 checks — spawns the real MCP server over stdio
 python demo.py            # full lifecycle, no API key needed
+ruff check .
 ```
 
-All four pass on a clean checkout. `e2e_mcp.py` needs the `mcp` SDK; the rest need
-only numpy.
+All four pass on a clean checkout, on Linux, macOS and Windows across Python
+3.10–3.13. `test_brainmem.py` also runs under `pytest`. `e2e_mcp.py` needs the
+`mcp` extra; the rest need only numpy. See [CONTRIBUTING.md](CONTRIBUTING.md) for
+why the shell and MCP suites exist separately from the unit tests.
 
 ## Layers
 
@@ -72,7 +100,11 @@ Processes: `encode()` gates on novelty, `consolidate()` distils offline, `retrie
 
 ## Production swaps, in order of impact
 
-1. **Real embedder** in place of `HashEmbedder`. The offline fallback has no semantic generalisation — it's hashed n-grams. This is why demo ranking looks mediocre.
+1. **Real embedder** — shipped. `pip install 'brainmem[embeddings]'` and set
+   `BRAINMEM_EMBEDDER=sentence-transformers`. The `HashEmbedder` default has no
+   semantic generalisation (it is hashed n-grams), so "the batch aborted" and "the
+   job failed" share no vector mass. Switching changes the vector dimension — start
+   a fresh store, because the old vectors are not comparable to the new ones.
 2. **`BRAINMEM_LLM=anthropic`** for the write gate and extractor. The heuristic judge cannot detect contradiction reliably; a cosine threshold structurally can't, since "X leads the project" and "X has left the project" embed almost identically.
 3. **pgvector or FAISS** above ~100k rows. Only `_nearest_facts` changes.
 
@@ -106,6 +138,13 @@ suites are for:
   was always empty and silently fell back to the working directory — the block
   still rendered, it just stopped being goal-conditioned. Every test passed the
   goal as `$1`, which is exactly why none of them saw it.
+- **The embedding hash was salted per process.** `HashEmbedder` used builtin
+  `hash()`, which Python salts per process (PEP 456). Every deployment path here —
+  the SessionStart hook, the CLI, the MCP server — is a separate process over one
+  database, so vectors written by one session were meaningless to the next. The
+  store still returned rows in the right shape, so nothing looked broken while
+  ranking was quietly random; the same query that ranked a failure lesson first
+  in-process ranked it fourth from a fresh process. Now blake2b.
 - **Confidence rose on restatement, not evidence.** Both the `encode` redundancy
   path and the `_distil` "reinforced" path did `confidence + 0.05`. But the gate
   decides redundancy by entity overlap and token similarity — it measures how alike
