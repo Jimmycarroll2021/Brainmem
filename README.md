@@ -249,8 +249,13 @@ provenance of every belief, and wire into Claude Code with one command.
 1. **Real embedder** — shipped. `pip install 'brainmem[embeddings]'`, then
    `BRAINMEM_EMBEDDER=sentence-transformers`. The `HashEmbedder` default is hashed
    n-grams with no semantic generalisation, so "the batch aborted" and "the job
-   failed" share no vector mass. Switching changes the vector dimension — start a
-   fresh store.
+   failed" share no vector mass. Switching changes the vector dimension (256 → 384
+   for the default model) — **start a fresh store**, because the old vectors are not
+   comparable to the new ones.
+
+   The first call downloads model weights and takes ~30s; every later load is a
+   second or two from cache. If your SessionStart hook appears to hang the first
+   time you enable this, that is what it is doing.
 2. **Let the agent be the judge — no API key needed.** The offline heuristic cannot
    reliably detect contradiction, and a cosine threshold structurally can't: "X leads
    the project" and "X has left the project" embed almost identically. But inside

@@ -157,7 +157,13 @@ class SentenceTransformerEmbedder:
                 "sentence-transformers is not installed. pip install 'brainmem[embeddings]'"
             ) from e
         self._m = SentenceTransformer(model)
-        self.dim = int(self._m.get_sentence_embedding_dimension())
+        # Renamed in sentence-transformers 5.x; the old name still works but warns,
+        # and the extra allows >=3.0 where only the old name exists. Prefer the new
+        # one, fall back rather than pinning the floor up for a method name.
+        get_dim = getattr(self._m, "get_embedding_dimension", None) or (
+            self._m.get_sentence_embedding_dimension
+        )
+        self.dim = int(get_dim())
 
     def embed(self, texts: Sequence[str]) -> np.ndarray:
         v = self._m.encode(list(texts), normalize_embeddings=True, show_progress_bar=False)

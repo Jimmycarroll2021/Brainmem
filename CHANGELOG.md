@@ -3,6 +3,22 @@
 Notable changes. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning is [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- `SentenceTransformerEmbedder` no longer calls a deprecated method.
+  sentence-transformers 5.x renamed `get_sentence_embedding_dimension` to
+  `get_embedding_dimension`; ours emitted a `FutureWarning` on every load and would
+  have broken outright when the old name goes. Prefers the new name and falls back,
+  since the extra allows `>=3.0` where only the old one exists.
+
+### Added
+
+- The optional embedder backend is now covered by tests that load a real model —
+  protocol conformance and a guard against our own deprecated call sites. Both skip
+  cleanly without the extra, which is how CI runs.
+
 ## [0.2.0] — 2026-08-01
 
 ### Added

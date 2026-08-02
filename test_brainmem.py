@@ -151,6 +151,58 @@ def test_missing_optional_backend_names_the_extra():
         builtins.__import__ = real
 
 
+def _sentence_transformers_available() -> bool:
+    try:
+        import sentence_transformers  # noqa: F401, PLC0415
+    except ImportError:
+        return False
+    return True
+
+
+def test_real_embedder_conforms_to_the_protocol():
+    """The optional backend, actually loaded — not just its import path.
+
+    Skips without the extra, which is how CI runs: a public repo should not pull
+    a 90MB model on every matrix cell.
+    """
+    if not _sentence_transformers_available():
+        print("    SKIP (sentence-transformers not installed)")
+        return
+    from brainmem import SentenceTransformerEmbedder  # noqa: PLC0415
+
+    e = SentenceTransformerEmbedder()
+    v = e.embed(["the batch aborted", "the job failed"])
+    assert v.shape == (2, e.dim), v.shape
+    assert v.dtype == np.float32, v.dtype
+    assert np.allclose(np.linalg.norm(v, axis=1), 1.0, atol=1e-5), "must be L2-normalised"
+
+
+def test_real_embedder_uses_no_deprecated_api():
+    """Our own call site must not be the thing emitting a FutureWarning.
+
+    sentence-transformers 5.x renamed get_sentence_embedding_dimension to
+    get_embedding_dimension. Warning today, gone tomorrow — and the extra allows
+    >=3.0, where only the old name exists, so this needs a fallback rather than a
+    swap.
+    """
+    if not _sentence_transformers_available():
+        print("    SKIP (sentence-transformers not installed)")
+        return
+    import warnings  # noqa: PLC0415
+
+    from brainmem import SentenceTransformerEmbedder  # noqa: PLC0415
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        SentenceTransformerEmbedder()
+    ours = [
+        w for w in caught
+        if issubclass(w.category, (DeprecationWarning, FutureWarning))
+        and "brainmem" in str(w.filename)
+    ]
+    assert not ours, [f"{w.category.__name__}: {w.message}" for w in ours]
+
+
 def test_embedding_is_stable_across_processes():
     """Every deployment path is a separate process — hook, CLI, MCP server, all
     reading one database. Builtin hash() is salted per process (PEP 456), so a
