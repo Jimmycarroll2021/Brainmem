@@ -54,8 +54,10 @@ async def main() -> int:
             "memory_outcome",
             "memory_explain",
             "memory_status",
+            "memory_pending",
+            "memory_distil",
         }
-        check(expected <= tools, "all five tools registered", f"got {sorted(tools)}")
+        check(expected <= tools, "all seven tools registered", f"got {sorted(tools)}")
 
         # -- empty store must not error --------------------------------
         r = text_of(await s.call_tool("memory_search", {"query": "anything"}))
@@ -199,6 +201,34 @@ async def main() -> int:
         check("[" in r, "results carry ids for the outcome loop", r[:120])
 
         fact_id = int(r.split("[")[1].split("]")[0])
+
+        # -- the agent distils, instead of the sentence-splitting heuristic --
+        # 0.2.0 let the agent judge the gate but left distillation offline. This is
+        # the other half: pending() hands over the raw episodes, distil() writes
+        # back what is durably true, through the same upsert path.
+        await s.call_tool("memory_write", {"content": "The nightly export aborted at 2am.",
+                                           "outcome": "fail"})
+        await s.call_tool("memory_write", {"content": "The nightly export aborted at 2am again.",
+                                           "outcome": "fail"})
+        r = text_of(await s.call_tool("memory_pending", {}))
+        check("awaiting distillation" in r, "memory_pending lists raw episodes", r[:90])
+        ep_ids = [int(x.split("]")[0]) for x in r.split("[")[1:] if x.split("]")[0].isdigit()]
+        r = text_of(
+            await s.call_tool(
+                "memory_distil",
+                {
+                    "episode_ids": ep_ids,
+                    "propositions": ["Avoid: the nightly export aborts when run at 2am"],
+                    "valence": "failure",
+                },
+            )
+        )
+        check("Distilled" in r, "agent-supplied distillation is written", r[:90])
+        r = text_of(await s.call_tool("memory_pending", {}))
+        check("Nothing pending" in r, "distilled episodes are not re-offered", r[:90])
+        r = text_of(await s.call_tool("memory_distil",
+                                      {"episode_ids": [99999], "propositions": ["x"]}))
+        check("Refused" in r, "distil refuses unknown episode ids", r[:90])
 
         # -- outcome loop ----------------------------------------------
         r = text_of(

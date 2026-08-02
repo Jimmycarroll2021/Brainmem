@@ -3,7 +3,25 @@
 Notable changes. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning is [SemVer](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.0] — 2026-08-02
+
+### Added
+
+- **The agent distils, not just judges.** 0.2.0 let the agent decide the write gate
+  but left consolidation on the offline extractor, which splits sentences and cannot
+  find the invariant across several events — the entire point of the pass. New
+  `memory_pending` and `memory_distil` MCP tools (and `Memory.pending()` /
+  `Memory.distil()`) hand the raw episodes to the agent and take back what is durably
+  true, through the same `_upsert_fact` path — so supersession, reinforcement and
+  provenance behave exactly as the offline pass does. An empty proposition list is a
+  valid answer that clears the backlog; unknown episode ids are refused, because a
+  belief citing episodes that do not exist is worse than no belief.
+- **The injected block now asks for writes.** Measured after a day of real use: the
+  hook fired every session, consolidation ran every session, and the store held zero
+  observations. The block invited reads and never asked for a write, so the agent
+  read memory and never wrote it. A store nobody writes to is a config file.
+
+### Fixed
 
 ### Fixed
 
@@ -91,6 +109,7 @@ and point-in-time recall, failure-valence memory that leads the assembled contex
 an outcome channel that is the only thing moving confidence, a SessionStart hook and
 an MCP server.
 
+[0.3.0]: https://github.com/Jimmycarroll2021/Brainmem/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Jimmycarroll2021/Brainmem/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/Jimmycarroll2021/Brainmem/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Jimmycarroll2021/Brainmem/releases/tag/v0.1.0

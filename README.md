@@ -135,11 +135,16 @@ what is already known. Inside Claude Code that model is **already there**: the a
 has the memory block in its context and is reading both statements. So it supplies
 the verdict itself rather than brainmem paying for a second model to re-read them:
 
-| | who judges | cost |
+There are two such judgements, and the agent can make both:
+
+| | offline default | in Claude Code |
 |---|---|---|
-| default | offline heuristic (entity overlap + negation cues) | none |
-| **Claude Code** | **the agent, via `memory_write(verdict=…)`** | **none** |
-| headless / cron | `BRAINMEM_LLM=anthropic` | one API call per write |
+| **Gate** — is this new, or a restatement, or does it contradict something? | entity overlap + negation cues | `memory_write(verdict=…, target=…)` |
+| **Distil** — what remains true after the moment passes? | sentence splitting | `memory_pending()` → `memory_distil(…)` |
+
+Both cost nothing, because the model doing the judging is the one already reading
+your code. `BRAINMEM_LLM=anthropic` exists for headless use where no agent is
+present; it costs an API call per write.
 
 The heuristic is deliberately weak and visibly so. It exists so the library runs with
 zero setup, not because it is good.

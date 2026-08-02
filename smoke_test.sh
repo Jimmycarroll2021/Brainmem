@@ -77,6 +77,11 @@ contains "$OUT" "</memory>" "block is closed"
 case "$OUT" in *"- ["*"]"*) check 0 "block carries fact ids" ;;
   *) check 1 "block carries fact ids" "no [id] in block" ;; esac
 contains "$OUT" "is not an outcome" "block states what does not count as an outcome"
+# A store nobody writes to is a config file. Measured after a day of real use:
+# the hook fired every session, consolidation ran every session, and the store
+# held zero observations — because the block invited reads and never asked for
+# a write.
+contains "$OUT" "memory_write" "block asks for writes, not just reads"
 
 # The hook must never take a session down with it.
 OUT=$(BRAINMEM_DIR=/nonexistent bash "$PREFIX/session_start.sh" "x" 2>&1)

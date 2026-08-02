@@ -824,6 +824,86 @@ class Memory:
             "failure_lessons": failures,
         }
 
+    def pending(self, limit: int = 30) -> list[dict[str, Any]]:
+        """Unconsolidated episodes, for a caller that wants to distil them itself.
+
+        The offline extractor splits sentences; it cannot find the invariant across
+        several events, which is the entire point of the pass. Inside Claude Code
+        the agent can, and is already paid for — so hand it the raw material rather
+        than settling for the heuristic. See distil().
+        """
+        rows = self._rows(
+            "SELECT id, ts, actor, content, outcome FROM episodes"
+            " WHERE consolidated = 0 AND archived = 0 ORDER BY ts LIMIT ?",
+            (limit,),
+        )
+        return [
+            {
+                "id": int(r["id"]),
+                "ts": float(r["ts"]),
+                "actor": r["actor"],
+                "content": r["content"],
+                "outcome": (
+                    None if r["outcome"] is None else ("ok" if r["outcome"] else "fail")
+                ),
+            }
+            for r in rows
+        ]
+
+    def distil(
+        self,
+        episode_ids: Iterable[int],
+        propositions: Iterable[str],
+        valence: str = "fact",
+        *,
+        now: float | None = None,
+    ) -> dict[str, int]:
+        """Write caller-supplied propositions as facts, citing those episodes.
+
+        The same path consolidate() uses — every proposition goes through
+        _upsert_fact, so supersession, reinforcement and provenance behave
+        identically. This is not a back door around the gate.
+
+        An empty proposition list is a valid answer: "nothing here is durable".
+        The episodes are still marked consolidated, because otherwise they would be
+        re-offered every session forever.
+        """
+        now = now if now is not None else time.time()
+        ids = [int(i) for i in episode_ids]
+        if not ids:
+            raise ValueError("distil() needs at least one episode id")
+        rows = self._rows(
+            f"SELECT id, ts FROM episodes WHERE id IN ({','.join('?' * len(ids))})", ids
+        )
+        # Provenance is the audit trail behind every belief. A fact citing episodes
+        # that do not exist is worse than no fact at all.
+        found = {int(r["id"]) for r in rows}
+        missing = [i for i in ids if i not in found]
+        if missing:
+            raise ValueError(f"unknown episode ids: {missing}")
+
+        valid_from = min(float(r["ts"]) for r in rows)
+        new = reinforced = superseded = 0
+        for prop in propositions:
+            text = str(prop).strip()
+            if not text:
+                continue
+            result = self._upsert_fact(text, ids, now, valid_from, valence)
+            new += result == "new"
+            reinforced += result == "reinforced"
+            superseded += result == "superseded"
+
+        self.db.executemany(
+            "UPDATE episodes SET consolidated = 1 WHERE id = ?", [(i,) for i in ids]
+        )
+        self.db.commit()
+        return {
+            "episodes": len(ids),
+            "facts_new": new,
+            "facts_reinforced": reinforced,
+            "superseded": superseded,
+        }
+
     def _distil(
         self, group: list[sqlite3.Row], sys_prompt: str, valence: str, now: float
     ) -> tuple[int, int, int]:

@@ -14,6 +14,8 @@ Tools:
     memory_outcome  record whether acting on a fact worked
     memory_explain  provenance chain for a belief
     memory_status   store statistics
+    memory_pending  raw episodes awaiting distillation
+    memory_distil   turn those episodes into durable beliefs
 """
 
 from __future__ import annotations
@@ -150,6 +152,67 @@ def memory_write(
             f"kept because that is new information (episode {r['episode_id']})."
         )
     return f"Recorded as {r['verdict']} (episode {r['episode_id']})."
+
+
+@mcp.tool()
+def memory_pending(limit: int = 30) -> str:
+    """Raw observations waiting to be distilled into durable beliefs.
+
+    Call this when you have a moment at the end of a piece of work, or when
+    memory_status shows a backlog. The offline extractor splits sentences; it
+    cannot find the invariant across several events, which is the whole point of
+    the pass. You can. Read these, decide what is durably true, and send it back
+    with memory_distil.
+    """
+    rows = _mem().pending(limit=limit)
+    if not rows:
+        return "Nothing pending — everything has been distilled."
+    out = [f"{len(rows)} episode(s) awaiting distillation:"]
+    out += [
+        f"  [{r['id']}] {r['content']}"
+        + (f"  [{r['outcome'].upper()}]" if r["outcome"] else "")
+        for r in rows
+    ]
+    out.append(
+        "\nGroup the ones that are about the same thing and call memory_distil "
+        "per group. Use valence='failure' for groups that record something going "
+        "wrong — those are ranked separately and shown first."
+    )
+    return "\n".join(out)
+
+
+@mcp.tool()
+def memory_distil(
+    episode_ids: list[int],
+    propositions: list[str],
+    valence: Literal["fact", "failure"] = "fact",
+) -> str:
+    """Turn raw episodes into durable beliefs, citing them as provenance.
+
+    Write what remains true after the moment has passed, not a summary of what
+    happened. "Validation fails on inputs above 20MB" is durable; "I ran the
+    validation script" is not. Each proposition should stand on its own months
+    later, with no other context on screen — no "it", no "that volume", no
+    reference to anything outside the sentence.
+
+    Pass an empty propositions list if nothing in the group is worth keeping.
+    That is a real answer and it clears the backlog; leaving them pending means
+    seeing them again every session.
+
+    valence='failure' for lessons about something going wrong. They distil under
+    their own rules, rank separately, and are fitted into the context budget
+    before successes — so they are the last thing dropped when space runs out.
+    """
+    try:
+        r = _mem().distil(episode_ids, propositions, valence=valence)
+    except ValueError as e:
+        return f"Refused: {e}"
+    if not any((r["facts_new"], r["facts_reinforced"], r["superseded"])):
+        return f"Cleared {r['episodes']} episode(s); nothing durable recorded."
+    return (
+        f"Distilled {r['episodes']} episode(s): {r['facts_new']} new, "
+        f"{r['facts_reinforced']} reinforced, {r['superseded']} superseded."
+    )
 
 
 @mcp.tool()

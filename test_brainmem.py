@@ -309,6 +309,84 @@ def test_bogus_verdict_is_rejected():
         raise AssertionError("an unknown verdict must raise, not fall back")
 
 
+def test_pending_returns_unconsolidated_episodes_for_the_agent():
+    """The other half of borrowing the model already in the room.
+
+    0.2.0 let the agent judge the write gate but left distillation on the
+    heuristic, which splits sentences rather than finding the invariant across
+    events. pending() hands it the raw material.
+    """
+    m = Memory()
+    m.encode("The 60MB CSV timed out during validation.", outcome=False, ts=T0)
+    m.encode("Retrying the 60MB CSV timed out again.", outcome=False, ts=T0 + 60)
+    rows = m.pending()
+    assert len(rows) == 2, rows
+    assert {"id", "ts", "content", "outcome"} <= set(rows[0]), rows[0]
+    assert rows[0]["outcome"] == "fail", rows[0]
+
+
+def test_agent_distillation_writes_facts_and_marks_episodes_done():
+    m = Memory()
+    m.encode("The 60MB CSV timed out during validation.", outcome=False, ts=T0)
+    m.encode("Retrying the 60MB CSV timed out again.", outcome=False, ts=T0 + 60)
+    ids = [r["id"] for r in m.pending()]
+
+    out = m.distil(ids, ["Avoid: validating a CSV above 20MB in one pass"], valence="failure")
+
+    assert out["facts_new"] == 1, out
+    assert m.stats()["episodes_unconsolidated"] == 0, "episodes must not be re-offered"
+    assert m.stats()["failure_lessons"] == 1
+    ev = m.explain(1)
+    assert len(ev["evidence"]) == 2, "both source episodes must remain traceable"
+
+
+def test_agent_distillation_dates_the_fact_from_first_observation():
+    """Same invariant the offline path holds: a belief was true from when it was
+    observed, not from when it was written down."""
+    m = Memory()
+    m.encode("The nightly batch aborted.", outcome=False, ts=T0)
+    m.encode("The nightly batch aborted again.", outcome=False, ts=T0 + 5 * DAY)
+    m.distil([r["id"] for r in m.pending()], ["Avoid: the nightly batch aborts"], valence="failure")
+    vf = m.db.execute("SELECT valid_from FROM facts LIMIT 1").fetchone()[0]
+    assert vf == T0, f"expected first observation {T0}, got {vf}"
+
+
+def test_agent_distillation_goes_through_the_same_gate():
+    """It must not be a back door around supersession — a distilled proposition
+    that contradicts a live belief has to retire it, exactly as consolidate does."""
+    m = Memory()
+    m.encode("The Education engagement is led by Priya Raman.", ts=T0)
+    m.consolidate(now=T0 + DAY)
+    m.encode("Priya Raman has left the Department.", ts=T0 + 2 * DAY)
+    m.distil([r["id"] for r in m.pending()], ["Priya Raman has left the Department"])
+    retired = m.db.execute("SELECT COUNT(*) FROM facts WHERE valid_to IS NOT NULL").fetchone()[0]
+    assert retired >= 1, "a contradicting distillation must close the old belief"
+
+
+def test_distillation_with_nothing_durable_still_clears_the_backlog():
+    """"Nothing here is worth keeping" is a real answer. If it left the episodes
+    pending they would be re-offered every session forever."""
+    m = Memory()
+    m.encode("Ran ls in the project root.", ts=T0)
+    ids = [r["id"] for r in m.pending()]
+    out = m.distil(ids, [])
+    assert out["facts_new"] == 0
+    assert m.stats()["episodes_unconsolidated"] == 0
+
+
+def test_distillation_rejects_unknown_episode_ids():
+    """Provenance is the audit trail. A fact citing episodes that do not exist is
+    worse than no fact."""
+    m = Memory()
+    m.encode("A real observation.", ts=T0)
+    try:
+        m.distil([1, 9999], ["Something durable"])
+    except ValueError as e:
+        assert "9999" in str(e), str(e)
+    else:
+        raise AssertionError("unknown episode ids must raise")
+
+
 def test_empty_observation_is_not_stored():
     """An empty observation is not a memory. Stored, it takes an episode row and
     later renders as a blank bullet inside a budget that had to drop something
